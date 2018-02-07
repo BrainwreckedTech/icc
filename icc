@@ -47,10 +47,6 @@ for ARG in "${@}"; do
     -r=* | --right=* )	CROP_R="${ARG##*=}" ;;
     -s=* | --savecrop=* )	CRPSAV="${ARG##*=}" ;;
     -u=* | --usecrop=* )	CRPUSE="${ARG##*=}" ;;
-    --psp=1:1 )		CROP_L=120; CROP_T=104; CROP_R=120; CROP_B=104 ;;
-    --psp=ezcap )	CROP_L=115; CROP_T=103; CROP_R=115; CROP_B=105 ;;
-    --psp=elgato )	CROP_L=125; CROP_T=101; CROP_R=127; CROP_B=107 ;;
-    --psp*)		echo "Invalid --psp argument"; ERROR=true ;;
     *) [ -e "${ARG}" ] && FILES+=("${ARG}") || ( echo "File '${ARG}' does not exist"; ERROR=true ) ;;
   esac
 done
