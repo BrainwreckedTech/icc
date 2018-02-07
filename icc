@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+
+# © 2018 Paul A. Hinchberger III aka BrainwreckedTech.
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ERROR=false
+
+command -v identify > /dev/null 2>&1 || { echo "The 'identify' binary is required but not found."; ERROR=true; }
+command -v convert > /dev/null 2>&1 || { echo "The 'convert' binary is required but not found."; ERROR=true; }
+
+${ERROR} && exit 1
+
+REPLACE=false
+SCRNAM="$(basename "${0}")"
+
+CROP_L=0
+CROP_R=0
+CROP_T=0
+CROP_B=0
+PRCENT=0
+JPQUAL=99
+CONVRT=none
+CRPSAV=""
+CRPUSE=""
+
+for ARG in "${@}"; do
+  case "${ARG}" in
+    -b=* | --bottom=* )	CROP_B="${ARG##*=}" ;;
+    -c=* | --convert=* )	CONVRT="${ARG##*=}" ;;
+    -j=* | --jpegquality=* )	JPQUAL="${ARG##*=}" ;;
+    -l=* | --left=* )	CROP_L="${ARG##*=}" ;;
+    -t=* | --top=* )	CROP_T="${ARG##*=}" ;;
+    -o | --overwrite )	REPLACE=true ;;
+    -p=* | --percent=* )	PRCENT="${ARG##*=}" ;;
+    -r=* | --right=* )	CROP_R="${ARG##*=}" ;;
+    -s=* | --savecrop=* )	CRPSAV="${ARG##*=}" ;;
+    -u=* | --usecrop=* )	CRPUSE="${ARG##*=}" ;;
+    --psp=1:1 )		CROP_L=120; CROP_T=104; CROP_R=120; CROP_B=104 ;;
+    --psp=ezcap )	CROP_L=115; CROP_T=103; CROP_R=115; CROP_B=105 ;;
+    --psp=elgato )	CROP_L=125; CROP_T=101; CROP_R=127; CROP_B=107 ;;
+    --psp*)		echo "Invalid --psp argument"; ERROR=true ;;
+    *) [ -e "${ARG}" ] && FILES+=("${ARG}") || ( echo "File '${ARG}' does not exist"; ERROR=true ) ;;
+  esac
+done
+
+if [ "${CONVRT}" != "none" -a ${REPLACE} = true ]; then
+  echo "The --convert and --overwrite options are mutually exclusive."
+  ERROR=true
+fi
+
+${ERROR} && exit 1
+
+for TIMAGE in "${FILES[@]}"; do
+  IMSIZE="$(identify -format '%wx%h' "${TIMAGE}")"
+  IMWIDE="${IMSIZE%%x*}"
+  IMHIGH="${IMSIZE##*x}"
+  CRPSET=""
+  if [ -n "${CRPUSE}" ]; then
+    read -ra CRPCFG -d '' <<< $(grep -A1 "^\[${CRPUSE}\]" ~/.config/${SCRNAM}_crop_settings.cfg | grep -v "^\[${CRPUSE}\]" )
+    CROP_L="${CRPCFG[0]}"
+    CROP_T="${CRPCFG[1]}"
+    CROP_R="${CRPCFG[2]}"
+    CROP_B="${CRPCFG[3]}"
+  fi
+  if [ ${CROP_T} -ne 0 -o ${CROP_L} -ne 0 -o ${CROP_B} -ne 0 -o ${CROP_R} -ne 0 -o ${PRCENT} -ne 0 ]; then
+    if [ ${PRCENT} -eq 0 ]; then
+      CROP_W=$(( ${IMWIDE} - ${CROP_L} - ${CROP_R} ))
+      CROP_H=$(( ${IMHIGH} - ${CROP_T} - ${CROP_B} ))
+    else
+      CROP_W=$(( ${IMWIDE} * ${PRCENT} / 100 ))
+      CROP_H=$(( ${IMHIGH} * ${PRCENT} / 100 ))
+      CROP_L=$(( ( ${IMWIDE} - ${CROP_W} ) / 2 ))
+      CROP_T=$(( ( ${IMHIGH} - ${CROP_H} ) / 2 ))
+      CROP_R=$(( ${IMWIDE} - ${CROP_W} - ${CROP_L} ))
+      CROP_B=$(( ${IMHIGH} - ${CROP_H} - ${CROP_T} ))
+    fi
+    echo "Crop details: Left ${CROP_L}px, Right ${CROP_R}px, Top ${CROP_T}px, Bottom ${CROP_B}px, Geometry ${CROP_W}x${CROP_H}+${CROP_L}+${CROP_T}"
+    CRPSET="-crop ${CROP_W}x${CROP_H}+${CROP_L}+${CROP_T} +repage"
+    if [ -n "${CRPSAV}" ]; then
+      echo -e "[${CRPSAV}]\n${CROP_L} ${CROP_T} ${CROP_R} ${CROP_B}" >> ~/.config/${SCRNAM}_crop_settings.cfg
+    fi
+  fi
+  if [ "${CONVRT}" = "none" ]; then
+    IMGEXT="${TIMAGE##*.}"
+  else
+    IMGEXT="${CONVRT}"
+  fi
+  case "${IMGEXT}" in
+    tif | tiff )	ADOPTS="-compress zip" ;;
+    jpg | jpeg )	ADOPTS="-quality ${JPQUAL} -interlace Plane -define jpeg:dct-method=float -define jpeg:optimize-coding=on -sampling-factor 4:4:4" ;;
+    png)		ADOPTS="-quality 05" ;;
+  esac
+  convert "${TIMAGE}" ${CRPSET} ${ADOPTS} "${TIMAGE%.*}_${SCRNAM}.${IMGEXT}"
+  ${REPLACE} && mv "${TIMAGE%.*}_${SCRNAM}.${IMGEXT}" "${TIMAGE}"
+done
