@@ -63,13 +63,19 @@ for TIMAGE in "${FILES[@]}"; do
   IMWIDE="${IMSIZE%%x*}"
   IMHIGH="${IMSIZE##*x}"
   CRPSET=""
+  set -x
   if [ -n "${CRPUSE}" ]; then
-    read -ra CRPCFG -d '' <<< $(grep -A1 "^\[${CRPUSE}\]" ~/.config/${SCRNAM}_crop_settings.cfg | grep -v "^\[${CRPUSE}\]" )
-    CROP_L="${CRPCFG[0]}"
-    CROP_T="${CRPCFG[1]}"
-    CROP_R="${CRPCFG[2]}"
-    CROP_B="${CRPCFG[3]}"
+    while IFS='= ' read -r lhs rhs; do
+      if [[ ! $lhs =~ ^\ *# && -n $lhs ]]; then
+        rhs="${rhs%%\#*}"             # Del in line right comments
+        rhs="${rhs%"${rhs##*[^ ]}"}"  # Del trailing spaces
+        rhs="${rhs%\"*}"              # Del opening string quotes
+        rhs="${rhs#\"*}"              # Del closing string quotes
+        declare $lhs="$rhs"
+      fi
+    done <<< "$(grep -A4 "^\[${CRPUSE}\]" ~/.config/${SCRNAM}_crop_settings.cfg | grep -v "^\[${CRPUSE}\]" )"
   fi
+  set +x
   if [ ${CROP_T} -ne 0 -o ${CROP_L} -ne 0 -o ${CROP_B} -ne 0 -o ${CROP_R} -ne 0 -o ${PRCENT} -ne 0 ]; then
     if [ ${PRCENT} -eq 0 ]; then
       CROP_W=$(( ${IMWIDE} - ${CROP_L} - ${CROP_R} ))
@@ -85,7 +91,7 @@ for TIMAGE in "${FILES[@]}"; do
     echo "Crop details: Left ${CROP_L}px, Right ${CROP_R}px, Top ${CROP_T}px, Bottom ${CROP_B}px, Geometry ${CROP_W}x${CROP_H}+${CROP_L}+${CROP_T}"
     CRPSET="-crop ${CROP_W}x${CROP_H}+${CROP_L}+${CROP_T} +repage"
     if [ -n "${CRPSAV}" ]; then
-      echo -e "[${CRPSAV}]\n${CROP_L} ${CROP_T} ${CROP_R} ${CROP_B}" >> ~/.config/${SCRNAM}_crop_settings.cfg
+      echo -e "[${CRPSAV}]\nCROP_L=${CROP_L}\nCROP_R=${CROP_R}\nCROP_T=${CROP_T}\nCROP_B=${CROP_B}" >> ~/.config/${SCRNAM}_crop_settings.cfg
     fi
   fi
   if [ "${CONVRT}" = "none" ]; then
